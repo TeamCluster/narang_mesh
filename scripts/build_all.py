@@ -15,7 +15,8 @@ SCRIPTS = os.path.dirname(os.path.abspath(__file__))
 if SCRIPTS not in sys.path:
     sys.path.insert(0, SCRIPTS)
 
-MODULES = ("narang_common", "narang_check", "narang_look", "build_helmet", "build_body", "build_limbs", "build_wings")
+MODULES = ("narang_common", "narang_check", "narang_look", "build_helmet", "build_body", "build_limbs", "build_wings",
+           "narang_rig_check", "build_rig")
 MIN_TIP_ANGLE = 3.0
 EXPECTED_PARTS = {
     "NR_Helmet_Shell", "NR_Helmet_Visor", "NR_Helmet_Rim", "NR_Helmet_Smile", "NR_Helmet_Ear", "NR_Helmet_Ear_Ring",
@@ -65,7 +66,8 @@ def failures(report):
 
 
 def build_all(save_path=None):
-    common, check, look, helmet, body, limbs, wings = load_modules()
+    common, check, look, helmet, body, limbs, wings, _, rig = load_modules()
+    rig.to_object_mode()
     prepare_scene(common)
     helmet.build_helmet()
     body.build_body()
@@ -77,8 +79,9 @@ def build_all(save_path=None):
     problems = failures(report)
     if problems:
         raise RuntimeError("검사 실패: " + "; ".join(problems))
+    rig_report = rig.build_rig()
     common.save(save_path or common.BLEND_PATH)
-    return {key: value for key, value in report.items() if key != "parts"}
+    return {**{key: value for key, value in report.items() if key != "parts"}, "rig": rig_report}
 
 
 if __name__ == "__main__":
