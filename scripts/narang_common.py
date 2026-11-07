@@ -9,25 +9,17 @@ ROOT = r"D:\NR_NARANG"
 BLEND_PATH = ROOT + r"\narang_base.blend"
 COLLECTION = "NARANG_Base"
 COLORS = {
-    "NR_White": (0.8, 0.8, 0.81, 1.0),
+    "NR_White": (0.8, 0.8, 0.78, 1.0),
     "NR_Gold": (0.78, 0.5, 0.06, 1.0),
-    "NR_Gray": (0.42, 0.42, 0.43, 1.0),
-    "NR_Dark": (0.05, 0.05, 0.055, 1.0),
-    "NR_Visor": (0.008, 0.008, 0.01, 1.0),
-    "NR_Screen": (0.012, 0.012, 0.014, 1.0),
+    "NR_Gray": (0.3, 0.3, 0.3, 1.0),
+    "NR_LightGray": (0.5, 0.51, 0.5, 1.0),
+    "NR_Dark": (0.02, 0.022, 0.022, 1.0),
+    "NR_Visor": (0.006, 0.014, 0.018, 1.0),
+    "NR_Screen": (0.018, 0.024, 0.028, 1.0),
     "NR_Red": (0.75, 0.03, 0.04, 1.0),
-    "NR_Green": (0.05, 0.75, 0.12, 1.0),
-    "NR_Cyan": (0.05, 0.65, 0.72, 1.0),
-    "NR_Blue": (0.08, 0.2, 0.85, 1.0),
-    "NR_Navy": (0.12, 0.2, 0.55, 1.0),
-    "NR_Tan": (0.55, 0.45, 0.2, 1.0),
-    "NR_HoseBlue": (0.1, 0.32, 0.55, 1.0),
-    "NR_HoseGreen": (0.3, 0.55, 0.45, 1.0),
-    "NR_Glass": (0.85, 0.92, 0.95, 1.0),
 }
-ROUGHNESS = {"NR_White": 0.42, "NR_Gold": 0.3, "NR_Visor": 0.08, "NR_Screen": 0.2, "NR_Glass": 0.03}
+ROUGHNESS = {"NR_White": 0.42, "NR_Gold": 0.3, "NR_Visor": 0.08, "NR_Screen": 0.3, "NR_Red": 0.55}
 METALLIC = {"NR_Gold": 1.0}
-ALPHA = {"NR_Glass": 0.22}
 
 
 def ensure_collection():
@@ -52,9 +44,6 @@ def get_material(name):
     bsdf.inputs["Base Color"].default_value = COLORS[name]
     bsdf.inputs["Roughness"].default_value = ROUGHNESS.get(name, 0.45)
     bsdf.inputs["Metallic"].default_value = METALLIC.get(name, 0.0)
-    bsdf.inputs["Alpha"].default_value = ALPHA.get(name, 1.0)
-    if name in ALPHA:
-        material.surface_render_method = "BLENDED"
     material.diffuse_color = COLORS[name]
     return material
 
@@ -134,6 +123,12 @@ class MeshBuilder:
             self.bridge(previous, current)
             previous = current
         self.faces.append(tuple(previous))
+
+    def extend(self, other):
+        """다른 빌더의 정점과 면을 그대로 합친다. 섬이 여러 개인 파트에 쓴다."""
+        shift = len(self.verts)
+        self.verts.extend(other.verts)
+        self.faces.extend(tuple(i + shift for i in face) for face in other.faces)
 
     def cut_half(self, eps=1e-5):
         """X<0 쪽을 지우고 X=0 정점을 맞춘다. 미러 모디파이어용."""
@@ -261,6 +256,72 @@ def tube(points, radii, sides=8):
     builder.cap(rings[0], points[0] - (points[1] - points[0]).normalized() * radii[0] * 0.5)
     builder.cap(rings[-1], points[-1] + (points[-1] - points[-2]).normalized() * radii[-1] * 0.5)
     return builder
+
+
+def ribbon(builder, points, normal_at, half_width, half_height, sides=8):
+    """표면을 따라가는 납작한 띠. normal_at은 점을 받아 표면 법선을 돌려준다."""
+    rings = []
+    for i, point in enumerate(points):
+        tangent = (points[min(i + 1, len(points) - 1)] - points[max(i - 1, 0)]).normalized()
+        normal = normal_at(point)
+        side = tangent.cross(normal).normalized()
+        rings.append(builder.ring([
+            point
+            + side * half_width * math.cos(2 * math.pi * k / sides)
+            + normal * half_height * math.sin(2 * math.pi * k / sides)
+            for k in range(sides)
+        ]))
+    for a, b in zip(rings, rings[1:]):
+        builder.bridge(a, b)
+    builder.cap(rings[0], points[0])
+    builder.cap(rings[-1], points[-1])
+
+
+def torus(center, u, v, radius_u, radius_v, minor, segments=32, sides=10):
+    """u, v 평면에 놓인 타원 고리. segments가 짝수면 u축 위에 정점 고리가 온다."""
+    builder = MeshBuilder()
+    center, u, v = Vector(center), Vector(u), Vector(v)
+    axis = u.cross(v)
+    rings = []
+    for k in range(segments):
+        a = 2 * math.pi * k / segments
+        middle = center + u * radius_u * math.cos(a) + v * radius_v * math.sin(a)
+        radial = (u * math.cos(a) + v * math.sin(a)).normalized()
+        rings.append(builder.ring([
+            middle + (radial * math.cos(b) + axis * math.sin(b)) * minor
+            for b in (2 * math.pi * i / sides for i in range(sides))
+        ]))
+    for k in range(segments):
+        builder.bridge(rings[k], rings[(k + 1) % segments])
+    return builder
+
+
+def smooth_min(a, b, k):
+    """두 거리를 k 범위에서 부드럽게 합친다."""
+    h = max(k - abs(a - b), 0.0) / k
+    return min(a, b) - h * h * k / 4.0
+
+
+def round_cone_distance(point, start, start_radius, end, end_radius):
+    """양끝 반지름이 다른 둥근 막대까지의 거리."""
+    axis = end - start
+    length = axis.length_squared
+    t = min(max((point - start).dot(axis) / length, 0.0), 1.0) if length else 0.0
+    return (point - (start + axis * t)).length - (start_radius + (end_radius - start_radius) * t)
+
+
+def first_exit(origin, direction, distance, step):
+    """origin에서 direction으로 나가다가 처음 만나는 표면 위 점. origin은 안쪽이어야 한다."""
+    low, high = 0.0, step
+    while distance(origin + direction * high) < 0:
+        low, high = high, high + step
+    for _ in range(20):
+        middle = (low + high) / 2
+        if distance(origin + direction * middle) < 0:
+            low = middle
+        else:
+            high = middle
+    return origin + direction * low
 
 
 def lathe(profile, x, y, sides=12):

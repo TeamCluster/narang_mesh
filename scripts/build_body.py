@@ -1,15 +1,20 @@
-"""몸통: 항아리형 몸, 주름 호스, 콘솔, 하트 스크린."""
+"""몸통: 항아리형 몸, 목 링, 점 장식 띠, 콘솔, 입체 하트 화면."""
 import math
 
 from mathutils import Vector
 
-from narang_common import MeshBuilder, catmull, planar_uv, plate, quad_sphere, replace_object, tube
+from narang_common import MeshBuilder, plate, quad_sphere, replace_object, ribbon, torus
 
 # 몸통: 가로, 앞뒤 반지름, 앞뒤 중심, 중심 높이, 위쪽, 아래쪽 높이, 곡면 지수
-X, Y, YC, ZC, UP, DOWN, POWER = 0.2175, 0.177, -0.02, 0.31, 0.21, 0.22, 2.3
+X, Y, YC, ZC, UP, DOWN, POWER = 0.219, 0.177, -0.002, 0.275, 0.205, 0.208, 2.7
 
-CONSOLE_Z = 0.415
-SCREEN_Z, SCREEN_UV = 0.284, 0.30
+CONSOLE_Z = 0.374
+SCREEN_Z = 0.2455
+HEART_CELL, HEART_TOP = 0.021, 0.2999
+HEART_ROWS = [".XX..XX.", "XXXXXXXX", "XXXXXXXX", ".XXXXXX.", "..XXXX..", "...XX..."]
+# 콘솔 왼쪽에서 목 옆으로 올라가는 띠의 정면 좌표. 시트에서 캐릭터 오른쪽에만 있다
+COLLAR = [(-0.058, 0.378), (-0.0765, 0.3845), (-0.1016, 0.3908), (-0.1267, 0.399), (-0.1487, 0.4097), (-0.1631, 0.4222)]
+COLLAR_DOTS = [(-0.0765, 0.385), (-0.1016, 0.3918), (-0.1279, 0.3990), (-0.1474, 0.4085), (-0.1612, 0.4210)]
 
 
 def body_transform(p):
@@ -42,23 +47,37 @@ def panel(name, center_z, half_width, half_height, thickness, roundness=0.15, gr
     return builder.to_mesh(name)
 
 
-def build_hose():
-    """콘솔에서 오른쪽 어깨를 돌아 백팩으로 가는 주름 호스. 한쪽에만 있다."""
-    start = body_front(0.012)(-0.05, 0.418)
-    control = [start, (-0.08, -0.156, 0.430), (-0.165, -0.095, 0.462), (-0.19, -0.02, 0.478),
-               (-0.165, 0.055, 0.482), (-0.095, 0.11, 0.47), (-0.035, 0.135, 0.455), (-0.02, 0.16, 0.45)]
-    points = catmull(control, 11)
-    radii = [(0.0155, 0.0205, 0.0205)[i % 3] for i in range(len(points))]
-    builder = tube(points, radii)
-    replace_object("NR_Neck_Hose", builder.to_mesh("NR_Neck_Hose"), "NR_Gray", subsurf=1)
+def build_neck():
+    ring = torus((0, 0.005, 0.444), (0, 1, 0), (1, 0, 0), 0.118, 0.150, 0.0235, segments=32, sides=10)
+    ring.cut_half()
+    replace_object("NR_Neck_Ring", ring.to_mesh("NR_Neck_Ring"), "NR_LightGray", mirror=True)
+
+
+def surface_normal(point):
+    return Vector((point.x / X ** 2 * 0.6, (point.y - YC) / Y ** 2, 0.25 * (point.z - ZC) / UP ** 2)).normalized()
+
+
+def build_collar():
+    surface = body_front(0.007)
+    points = [surface(x, z) for x, z in COLLAR]
+    builder = MeshBuilder()
+    ribbon(builder, points, surface_normal, 0.0105, 0.008)
+    replace_object("NR_Collar_Band", builder.to_mesh("NR_Collar_Band"), "NR_White", subsurf=1)
+
+    dots = MeshBuilder()
+    for x, z in COLLAR_DOTS:
+        center = body_front(0.0155)(x, z)
+        dots.extend(quad_sphere(2, lambda p, c=center: c + Vector((0.0056 * p.x, 0.0028 * p.y, 0.0056 * p.z))))
+    replace_object("NR_Collar_Dots", dots.to_mesh("NR_Collar_Dots"), "NR_Dark", subsurf=1)
 
 
 def build_buttons():
-    center = body_front(0.0)(-0.025, CONSOLE_Z)
-    builder = quad_sphere(3, lambda p: center + Vector((0.0145 * p.x, -0.0195 + 0.006 * p.y, 0.0145 * p.z)))
+    center = body_front(0.0)(-0.0257, CONSOLE_Z)
+    radius = 0.0188
+    builder = quad_sphere(6, lambda p: center + Vector((radius * p.x, -0.0195 + 0.006 * p.y, radius * p.z)))
     replace_object("NR_Console_Red", builder.to_mesh("NR_Console_Red"), "NR_Red", subsurf=1)
 
-    long, short, cx = 0.0135, 0.0048, 0.025
+    long, short, cx = 0.0176, 0.0052, 0.0289
     plus = [(-short, -long), (short, -long), (short, -short), (long, -short), (long, short), (short, short),
             (short, long), (-short, long), (-short, short), (-long, short), (-long, -short), (-short, -short)]
     builder = MeshBuilder()
@@ -73,7 +92,39 @@ def build_buttons():
         builder.faces.append((a[2], a[3], a[4], a[5]))
         builder.faces.append((a[5], a[6], a[7], a[8]))
         builder.faces.append((a[8], a[9], a[10], a[11]))
-    replace_object("NR_Console_Cross", builder.to_mesh("NR_Console_Cross"), "NR_Dark", subsurf=1)
+    mesh = builder.to_mesh("NR_Console_Cross")
+    mesh.shade_flat()
+    replace_object("NR_Console_Cross", mesh, "NR_Dark", subsurf=0)
+
+
+def heart_runs(row):
+    """한 행에서 이어진 칸의 (시작, 끝) 목록."""
+    runs, start = [], None
+    for index, mark in enumerate(row + "."):
+        if mark == "X" and start is None:
+            start = index
+        elif mark != "X" and start is not None:
+            runs.append((start, index))
+            start = None
+    return runs
+
+
+def build_heart():
+    """픽셀 하트. 행마다 이어진 칸을 판 하나로 만든다. 각진 모양이라 Subdivision을 쓰지 않는다."""
+    builder = MeshBuilder()
+    left = -len(HEART_ROWS[0]) * HEART_CELL / 2
+    for r, row in enumerate(HEART_ROWS):
+        top = HEART_TOP - r * HEART_CELL
+        for a, b in heart_runs(row):
+            x0, x1 = left + a * HEART_CELL, left + b * HEART_CELL
+
+            def shape(s, t, x0=x0, x1=x1, top=top):
+                return x0 + (x1 - x0) * (s + 1) / 2, top - HEART_CELL * (1 - t) / 2
+
+            builder.extend(plate(4, body_front(0.016), body_front(0.004), shape))
+    mesh = builder.to_mesh("NR_Heart")
+    mesh.shade_flat()
+    replace_object("NR_Heart", mesh, "NR_Red", subsurf=0)
 
 
 def build_body():
@@ -81,13 +132,16 @@ def build_body():
     builder.cut_half()
     replace_object("NR_Body", builder.to_mesh("NR_Body"), "NR_White", mirror=True)
 
-    build_hose()
-    replace_object("NR_Console_Frame", panel("NR_Console_Frame", CONSOLE_Z, 0.054, 0.031, 0.012),
-                   "NR_Gray", mirror=True)
-    replace_object("NR_Console_Face", panel("NR_Console_Face", CONSOLE_Z, 0.048, 0.025, 0.016),
+    build_neck()
+    build_collar()
+    replace_object("NR_Console_Frame", panel("NR_Console_Frame", CONSOLE_Z, 0.0634, 0.0273, 0.012),
+                   "NR_Dark", mirror=True)
+    replace_object("NR_Console_Face", panel("NR_Console_Face", CONSOLE_Z, 0.0585, 0.0225, 0.016),
                    "NR_White", mirror=True)
     build_buttons()
 
-    mesh = panel("NR_Heart_Screen", SCREEN_Z, 0.131, 0.093, 0.004, roundness=0.12, grid=8)
-    planar_uv(mesh, SCREEN_UV, 0.0, SCREEN_Z)
-    replace_object("NR_Heart_Screen", mesh, "NR_Screen", mirror=True, mirror_u=True)
+    replace_object("NR_Screen_Frame", panel("NR_Screen_Frame", SCREEN_Z, 0.1445, 0.0965, 0.006, roundness=0.03, grid=12),
+                   "NR_Gray", mirror=True)
+    replace_object("NR_Heart_Screen", panel("NR_Heart_Screen", SCREEN_Z, 0.1375, 0.0895, 0.0085, roundness=0.03, grid=12),
+                   "NR_Screen", mirror=True)
+    build_heart()

@@ -9,15 +9,21 @@ from mathutils import Euler, Vector
 from narang_common import ROOT
 from narang_view import VIEWS
 
-SHEET = os.path.join(ROOT, "reference", "narang_turnaround.png")
+SHEET = os.path.join(ROOT, "reference", "narang_turnaround_v2.png")
 RENDER_DIR = os.path.join(ROOT, "renders")
-SCALE = 780            # 시트에서 키 1이 차지하는 픽셀
-FEET_ROW = 1324
-CENTERS = {"front": 423.5, "right": 995.5, "left": 1495.5, "back": 2028.0}
-# 시트에서 각 뷰가 차지하는 가로 범위. 옆 뷰가 측정에 섞이지 않게 한다
-BOUNDS = {"front": (100, 730), "right": (750, 1250), "left": (1260, 1740), "back": (1750, 2345)}
-PANEL = 936            # 렌더 크기 (오소 1.2 * 780)
-HALF_WINDOW = 350
+SCALE = 797            # 시트에서 키 1이 차지하는 픽셀
+FEET_ROW = 1144
+SHEET_BOTTOM = 1230    # 이 아래는 뷰 이름과 워터마크
+CENTERS = {"front": 407, "right": 984, "left": 1453, "back": 2012}
+# 각 뷰가 차지하는 (x0, x1, y0, y1) 범위. 팔이 옆 뷰의 열까지 뻗어서 높이별로 나눈다
+BOUNDS = {
+    "front": [(20, 730, 0, 770), (20, 790, 770, SHEET_BOTTOM)],
+    "right": [(750, 1215, 0, 770), (800, 1215, 770, SHEET_BOTTOM)],
+    "left": [(1230, 1690, 0, 770), (1230, 1635, 770, SHEET_BOTTOM)],
+    "back": [(1700, 2390, 0, 770), (1640, 2390, 770, SHEET_BOTTOM)],
+}
+PANEL = 956            # 렌더 크기 (오소 1.2 * 797)
+HALF_WINDOW = 400
 
 
 def read_image(path):
@@ -49,7 +55,7 @@ def render_views():
                  world=scene.world)
     camera_data = bpy.data.cameras.new("NR_RenderCam")
     camera_data.type = "ORTHO"
-    camera_data.ortho_scale = 1.2
+    camera_data.ortho_scale = PANEL / SCALE
     camera = bpy.data.objects.new("NR_RenderCam", camera_data)
     scene.collection.objects.link(camera)
     world = bpy.data.worlds.new("NR_RenderWorld")
@@ -91,12 +97,39 @@ def render_views():
     return paths
 
 
+def bounded(mask, rectangles):
+    out = np.zeros_like(mask)
+    for x0, x1, y0, y1 in rectangles:
+        out[y0:y1, x0:x1] = mask[y0:y1, x0:x1]
+    return out
+
+
+def fill_holes(mask):
+    """몸 안쪽에서 배경색과 같아 빠진 픽셀을 채운다. 가장자리에서 닿지 않는 빈 곳만 채운다."""
+    free = ~mask
+    outside = np.zeros_like(mask)
+    outside[0], outside[-1], outside[:, 0], outside[:, -1] = free[0], free[-1], free[:, 0], free[:, -1]
+    previous = -1
+    while outside.sum() != previous:
+        previous = outside.sum()
+        for rows in (range(1, mask.shape[0]), range(mask.shape[0] - 2, -1, -1)):
+            step = 1 if rows.step > 0 else -1
+            for y in rows:
+                outside[y] |= outside[y - step] & free[y]
+        for cols in (range(1, mask.shape[1]), range(mask.shape[1] - 2, -1, -1)):
+            step = 1 if cols.step > 0 else -1
+            for x in cols:
+                outside[:, x] |= outside[:, x - step] & free[:, x]
+    return ~outside
+
+
 def compare(paths):
     sheet = read_image(SHEET)
-    luminance = sheet[..., :3].mean(axis=2)
-    saturation = sheet[..., :3].max(axis=2) - sheet[..., :3].min(axis=2)
-    sheet_mask = (luminance < 0.965) | (saturation > 0.08)
-    sheet_mask[1380:] = False
+    # 배경이 회색이고 몸이 흰색이라, 행마다 배경색과의 차이로 윤곽을 잡는다
+    rgb_sheet = sheet[..., :3]
+    background = np.median(rgb_sheet[:, :30], axis=1, keepdims=True)
+    sheet_mask = np.abs(rgb_sheet - background).sum(axis=2) > 0.05
+    sheet_mask[SHEET_BOTTOM:] = False
     # 패널 가운데는 z=0.5, 시트에서 그 높이의 행은 FEET_ROW - 0.5 * SCALE
     row_top = FEET_ROW - SCALE // 2 - PANEL // 2
     scores, tiles = {}, []
@@ -108,8 +141,7 @@ def compare(paths):
         x0 = int(center) - HALF_WINDOW
         left_pad = max(-x0, 0)
         target = np.zeros_like(model)
-        limited = np.zeros_like(sheet_mask)
-        limited[:, BOUNDS[kind][0]:BOUNDS[kind][1]] = sheet_mask[:, BOUNDS[kind][0]:BOUNDS[kind][1]]
+        limited = fill_holes(bounded(sheet_mask, BOUNDS[kind]))
         crop = limited[row_top:row_top + PANEL, max(x0, 0):x0 + 2 * HALF_WINDOW]
         target[:crop.shape[0], left_pad:left_pad + crop.shape[1]] = crop
         scores[kind] = round(float((model & target).sum() / max((model | target).sum(), 1)), 3)

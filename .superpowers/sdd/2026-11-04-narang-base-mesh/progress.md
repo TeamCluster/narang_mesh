@@ -33,3 +33,23 @@ Revision: Ruling: 양팔을 시트의 날개형으로 대칭 제작, 가리키�
 Revision: Ruling: 얼굴, 하트 텍스처와 백팩을 범위에 포함 — 사용자가 최대한 비슷하게 요청 — 초기 스펙의 제외 항목 번복.
 Revision: Ruling: 발바닥은 평평하게 유지, 넘어짐 기준 4도를 3도로 완화 — 시트의 작은 발로는 4도 불가 — 출력 시 받침대 필요.
 Revision: Ruling: STL에서 복셀 2개 크기 이하의 내부 빈 공간 삭제 — 실제 부품 크기 아님 — 삭제 개수를 보고.
+
+Revision 2 (2026-11-07): 사용자가 새 시트 기준 재제작을 요청. 기준을 reference/narang_turnaround_v2.png로 변경, 키 1 = 797px.
+Revision 2: Ruling: 백팩, 플라스크, 호스를 코드까지 완전 삭제 — 사용자 지시 — git 이력에서 복구 가능.
+Revision 2: Ruling: 팔은 정면, 후면 뷰를 따름 — 시트 측면 뷰는 팔이 내려와 있어 T포즈와 불일치 — 측면 IoU가 그만큼 낮게 나옴.
+Revision 2: Ruling: 엄지를 NR_Thumb 별도 파트로 분리 — 면 돌출은 Subdivision에 묻혀 주름이 안 생김 — 리깅 때 손 뼈에 같이 묶어야 함.
+Revision 2: fixed narang_compare 구멍 메우기가 팔찌와 목 사이 빈 공간까지 채움 — 바깥에서 채우는 방식으로 교체, IoU가 전보다 엄격해짐.
+Revision 2: complete (25파트 닫힘, 키 0.9971, 넘어짐 5.39도, IoU 정면 0.962 우 0.953 좌 0.940 후 0.964, STL non_manifold 0, shells 1, 100mm, OBJ 25파트)
+Revision 2: open: 옆 장식판이 측면에서 모양이 고르지 않음, 턱 V자가 시트보다 부드러움, 바이저가 시트보다 회색으로 렌더됨. 사용자 승인 대기.
+
+Revision 3 (2026-11-07): 사용자가 엄지(소시지를 붙인 느낌)와 하반신(다리 왜곡, 발이 다리와 끊김)을 지적.
+Revision 3: Ruling: NR_Thumb 폐기, NR_Hand로 교체 — 손바닥 안쪽 한 점에서 방사형으로 표면을 찾아 손과 엄지를 한 표면으로 만듦. 팔과 손 경계는 팔찌 아래, 리깅 때 NR_Arm과 NR_Hand를 같이 묶어야 함.
+Revision 3: Ruling: 단면 쌓기 방식의 손은 엄지 끝이 선반처럼 잘려 폐기 — 시도 후 확인.
+Revision 3: Ruling: 다리와 발을 foot_point 표면 하나로 재제작. 밑창(NR_Shoe)은 그 표면을 기울어진 선(SOLE_LINE) 아래로 덮는 껍질, 장식판도 같은 표면 위에 놓음.
+Revision 3: complete (25파트 닫힘, 키 0.9971, 넘어짐 4.23도, IoU 정면 0.965 우 0.955 좌 0.942 후 0.965, STL non_manifold 0, shells 1, 100mm, OBJ 25파트)
+Revision 3: open: 턱 V자가 시트보다 부드러움, 바이저가 시트보다 회색으로 렌더됨. 사용자 승인 대기.
+
+Revision 4 (2026-11-07): 사용자가 날개를 지적. 달걀 겹치기와 둥근 막대 합치기는 윗선이 울퉁불퉁하고 주름이 얕아 폐기.
+Revision 4: Ruling: 시트에서 딴 윤곽(OUTLINE)을 쿠션처럼 부풀리는 방식으로 재제작 — 깃털 사이 홈에서 뿌리 쪽으로 주름을 파고, 날개 평면은 위쪽만 몸에 붙고 아래로 벌어짐.
+Revision 4: complete (25파트 닫힘, 키 0.9971, 넘어짐 4.34도, IoU 정면 0.964 우 0.959 좌 0.946 후 0.966). STL, OBJ 재출력.
+Revision 5 (2026-11-07): 얼굴 N을 시트의 뾰족한 글자에서 narang_ex (3).png의 고딕체로 변경. 사용자 지시로 이 글자만 시트 대신 예시 이미지를 따름. 텍스처만 변경, 메시 수치 동일.

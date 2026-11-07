@@ -15,8 +15,15 @@ SCRIPTS = os.path.dirname(os.path.abspath(__file__))
 if SCRIPTS not in sys.path:
     sys.path.insert(0, SCRIPTS)
 
-MODULES = ("narang_common", "narang_check", "narang_look", "build_helmet", "build_body", "build_limbs", "build_pack")
+MODULES = ("narang_common", "narang_check", "narang_look", "build_helmet", "build_body", "build_limbs", "build_wings")
 MIN_TIP_ANGLE = 3.0
+EXPECTED_PARTS = {
+    "NR_Helmet_Shell", "NR_Helmet_Visor", "NR_Helmet_Rim", "NR_Helmet_Smile", "NR_Helmet_Ear", "NR_Helmet_Ear_Ring",
+    "NR_Body", "NR_Neck_Ring", "NR_Collar_Band", "NR_Collar_Dots",
+    "NR_Console_Frame", "NR_Console_Face", "NR_Console_Red", "NR_Console_Cross",
+    "NR_Screen_Frame", "NR_Heart_Screen", "NR_Heart",
+    "NR_Arm", "NR_Hand", "NR_Bracelet", "NR_Leg", "NR_Shoe", "NR_Leg_Plate", "NR_Leg_Plate_Dots", "NR_Wing",
+}
 
 
 def load_modules():
@@ -32,6 +39,8 @@ def prepare_scene(common):
         bpy.data.objects.remove(obj)
         if data is not None and data.users == 0:
             bpy.data.meshes.remove(data)
+    for material in [m for m in bpy.data.materials if m.name.startswith("NR_") and m.users == 0]:
+        bpy.data.materials.remove(material)
     for name in ("Cube", "Sphere"):
         obj = bpy.data.objects.get(name)
         if obj is not None:
@@ -41,6 +50,9 @@ def prepare_scene(common):
 
 def failures(report):
     problems = []
+    names = {p["name"] for p in report["parts"]}
+    if names != EXPECTED_PARTS:
+        problems.append("파트 구성이 다르다 " + ", ".join(sorted(names ^ EXPECTED_PARTS)))
     if not report["all_closed"]:
         bad = [p["name"] for p in report["parts"] if p["non_manifold"] or p["boundary"]]
         problems.append("닫히지 않은 파트 " + ", ".join(bad))
@@ -53,12 +65,12 @@ def failures(report):
 
 
 def build_all(save_path=None):
-    common, check, look, helmet, body, limbs, pack = load_modules()
+    common, check, look, helmet, body, limbs, wings = load_modules()
     prepare_scene(common)
     helmet.build_helmet()
     body.build_body()
     limbs.build_limbs()
-    pack.build_pack()
+    wings.build_wings()
     look.apply_textures()
     bpy.context.view_layer.update()
     report = check.check_scene()

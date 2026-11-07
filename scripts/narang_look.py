@@ -1,5 +1,4 @@
-"""얼굴과 하트 화면 텍스처. 좌표는 시트에서 쟀다."""
-import math
+"""얼굴 텍스처. 좌표는 reference/narang_turnaround_v2.png에서 쟀다."""
 import os
 
 import bpy
@@ -9,29 +8,33 @@ from narang_common import ROOT
 
 TEXTURE_DIR = os.path.join(ROOT, "textures")
 SIZE = 1024
-CYAN = (0.15, 0.95, 0.95)
-RED = (1.0, 0.16, 0.13)
-WHITE = (0.75, 0.75, 0.75)
+GLASS = (0.006, 0.026, 0.036)
+GLOW = (0.1, 0.72, 0.64)
+REFLECTION = (0.06, 0.085, 0.09)
 
 
 class Canvas:
     """월드 좌표 (x, z)로 그리는 정사각 그림판."""
 
-    def __init__(self, span, center_z):
+    def __init__(self, span, center_z, background):
         self.span, self.center_z = span, center_z
-        self.pixels = np.zeros((SIZE, SIZE, 3), dtype=np.float32)
+        self.pixels = np.empty((SIZE, SIZE, 3), dtype=np.float32)
+        self.pixels[:] = background
 
     def px(self, x, z):
-        return (int((0.5 + x / self.span) * SIZE), int((0.5 + (z - self.center_z) / self.span) * SIZE))
+        return ((0.5 + x / self.span) * SIZE, (0.5 + (z - self.center_z) / self.span) * SIZE)
 
-    def rect(self, x0, z0, x1, z1, color):
-        a, b = self.px(x0, z0), self.px(x1, z1)
-        self.pixels[min(a[1], b[1]):max(a[1], b[1]), min(a[0], b[0]):max(a[0], b[0])] = color
-
-    def line(self, x0, z0, x1, z1, width, color):
-        for t in np.linspace(0, 1, 400):
-            x, z = x0 + (x1 - x0) * t, z0 + (z1 - z0) * t
-            self.rect(x - width / 2, z - width / 2, x + width / 2, z + width / 2, color)
+    def polygon(self, points, color):
+        """짝홀 규칙으로 다각형을 채운다."""
+        corners = [self.px(x, z) for x, z in points]
+        cols, rows = np.meshgrid(np.arange(SIZE) + 0.5, np.arange(SIZE) + 0.5)
+        inside = np.zeros((SIZE, SIZE), dtype=bool)
+        for (x0, y0), (x1, y1) in zip(corners, corners[1:] + corners[:1]):
+            if y0 == y1:
+                continue
+            crosses = (y0 > rows) != (y1 > rows)
+            inside ^= crosses & (cols < (x1 - x0) * (rows - y0) / (y1 - y0) + x0)
+        self.pixels[inside] = color
 
     def save(self, name):
         os.makedirs(TEXTURE_DIR, exist_ok=True)
@@ -44,42 +47,40 @@ class Canvas:
         return image
 
 
+def sheet(cx, cy):
+    """시트 바이저를 2배 확대한 좌표를 월드 좌표로 바꾼다."""
+    return (cx - 454) / 1594.0, (774 - cy / 2) / 797.0
+
+
+def arc(start, middle, end, steps=16):
+    """세 점을 지나는 2차 곡선."""
+    out = []
+    for i in range(steps + 1):
+        t = i / steps
+        out.append(tuple(
+            (1 - t) ** 2 * start[k] + 2 * t * (1 - t) * (2 * middle[k] - (start[k] + end[k]) / 2) + t * t * end[k]
+            for k in (0, 1)
+        ))
+    return out
+
+
+def shape(canvas, sheet_points, color):
+    canvas.polygon([sheet(x, y) for x, y in sheet_points], color)
+
+
 def face_texture():
-    c = Canvas(0.52, 0.735)
-    w = 0.017
-    c.rect(-0.140, 0.682, -0.140 + w, 0.782, CYAN)     # L
-    c.rect(-0.140, 0.682, -0.053, 0.682 + w, CYAN)
-    x0, x1, top, mid, low = 0.065, 0.145, 0.782, 0.732, 0.682
-    c.rect(x0, top - w, x1, top, CYAN)                 # 2
-    c.rect(x1 - w, mid, x1, top, CYAN)
-    c.rect(x0, mid - w / 2, x1, mid + w / 2, CYAN)
-    c.rect(x0, low, x0 + w, mid, CYAN)
-    c.rect(x0, low, x1, low + w, CYAN)
-    n = 0.012
-    c.rect(-0.027, 0.608, -0.027 + n, 0.664, CYAN)     # N
-    c.rect(0.040 - n, 0.608, 0.040, 0.664, CYAN)
-    c.line(-0.021, 0.658, 0.034, 0.614, n, CYAN)
-    for i in range(12):  # 유리 오른쪽 위의 반사선
-        a0, a1 = math.radians(72 - i * 3.6), math.radians(72 - (i + 1) * 3.6)
-        c.line(0.215 * math.cos(a0), 0.735 + 0.175 * math.sin(a0),
-               0.215 * math.cos(a1), 0.735 + 0.175 * math.sin(a1), 0.004, WHITE)
+    c = Canvas(0.52, 0.735, GLASS)
+    # 유리 반사: 위쪽 넓은 띠와 왼쪽 가는 호
+    shape(c, arc((230, 170), (454, 100), (672, 170)) + arc((650, 212), (454, 170), (245, 218)), REFLECTION)
+    shape(c, arc((205, 190), (130, 255), (108, 360)) + arc((122, 360), (145, 262), (212, 200)), REFLECTION)
+
+    shape(c, [(205, 297), (240, 297), (240, 432), (345, 432), (345, 468), (205, 468)], GLOW)     # L
+    shape(c, [(565, 278), (716, 278), (716, 392), (582, 392), (582, 432), (697, 432), (697, 468),
+              (547, 468), (547, 355), (680, 355), (680, 315), (565, 315)], GLOW)                 # 2
+    # N: narang_ex (3).png처럼 두 기둥이 같은 높이에서 끝나는 고딕체
+    shape(c, [(385, 482), (421, 482), (483, 576), (483, 482), (513, 482), (513, 622), (477, 622),
+              (415, 528), (415, 622), (385, 622)], GLOW)
     return c.save("narang_face.png")
-
-
-def heart_texture():
-    c = Canvas(0.30, 0.284)
-    cell = 0.0205
-    rows = [".XX.XX.", "XXXXXXX", "XXXXXXX", ".XXXXX.", "..XXX..", "...X..."]
-    left, top = -0.004 - 3.5 * cell, 0.278 + 3 * cell
-    for r, row in enumerate(rows):
-        for col, mark in enumerate(row):
-            if mark == "X":
-                x, z = left + col * cell, top - r * cell
-                c.rect(x, z - cell, x + cell, z, RED)
-    c.rect(0.067, 0.352, 0.105, 0.356, WHITE)
-    c.rect(0.101, 0.2615, 0.105, 0.356, WHITE)
-    c.rect(0.099, 0.238, 0.106, 0.245, WHITE)
-    return c.save("narang_heart.png")
 
 
 def connect(material_name, image, strength):
@@ -95,5 +96,4 @@ def connect(material_name, image, strength):
 
 
 def apply_textures():
-    connect("NR_Visor", face_texture(), 2.0)
-    connect("NR_Screen", heart_texture(), 2.0)
+    connect("NR_Visor", face_texture(), 1.25)
